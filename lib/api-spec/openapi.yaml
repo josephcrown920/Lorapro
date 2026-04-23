@@ -152,6 +152,58 @@ paths:
               schema:
                 $ref: "#/components/schemas/JobStats"
 
+  /jobs/{id}/generate:
+    post:
+      operationId: generateImage
+      tags: [jobs]
+      summary: Generate an image using the trained LoRA
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateImageBody"
+      responses:
+        "201":
+          description: Generation created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Generation"
+        "400":
+          description: Invalid request or job not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/{id}/generations:
+    get:
+      operationId: listGenerations
+      tags: [jobs]
+      summary: List generated images for a training job
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        "200":
+          description: List of generations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Generation"
+
   /uploads/presign:
     post:
       operationId: presignUpload
@@ -280,6 +332,41 @@ components:
         - succeeded
         - failed
         - canceled
+
+    Generation:
+      type: object
+      properties:
+        id:
+          type: integer
+        jobId:
+          type: integer
+        prompt:
+          type: string
+        imageUrl:
+          type: string
+          nullable: true
+        status:
+          type: string
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+      required:
+        - id
+        - jobId
+        - prompt
+        - status
+        - createdAt
+
+    GenerateImageBody:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+      required:
+        - prompt
 
     PresignUploadBody:
       type: object

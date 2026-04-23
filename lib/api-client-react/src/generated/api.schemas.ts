@@ -72,6 +72,21 @@ export interface JobStats {
   canceled: number;
 }
 
+export interface Generation {
+  id: number;
+  jobId: number;
+  prompt: string;
+  imageUrl?: string | null;
+  status: string;
+  errorMessage?: string | null;
+  createdAt: string;
+}
+
+export interface GenerateImageBody {
+  /** @minLength 1 */
+  prompt: string;
+}
+
 export interface PresignUploadBody {
   filename: string;
   contentType: string;

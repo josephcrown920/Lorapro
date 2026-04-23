@@ -1,19 +1,23 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "wouter";
 import { 
   useGetJob, 
   useCancelJob, 
   useSyncJob, 
+  useGenerateImage,
+  useListGenerations,
   getGetJobQueryKey,
   getListJobsQueryKey,
-  getGetJobStatsQueryKey
+  getGetJobStatsQueryKey,
+  getListGenerationsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/pages/dashboard";
-import { ArrowLeft, RefreshCw, Terminal, Download, XCircle, Clock, Database, Settings2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, Terminal, Download, XCircle, Clock, Database, Settings2, Sparkles, ImageIcon } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 
@@ -251,6 +255,128 @@ export default function JobDetail() {
           )}
         </div>
       </div>
+
+      {job.status === "succeeded" && job.outputUrl && (
+        <InferencePanel jobId={job.id} triggerWord={job.triggerWord} />
+      )}
     </div>
+  );
+}
+
+function InferencePanel({ jobId, triggerWord }: { jobId: number; triggerWord: string }) {
+  const [prompt, setPrompt] = useState(`a portrait photo of ${triggerWord}, cinematic lighting, high detail`);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: generations = [], isLoading } = useListGenerations(jobId, {
+    query: { queryKey: getListGenerationsQueryKey(jobId) },
+  });
+
+  const generate = useGenerateImage();
+
+  const handleGenerate = () => {
+    if (!prompt.trim()) return;
+    generate.mutate(
+      { id: jobId, data: { prompt } },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListGenerationsQueryKey(jobId) });
+          toast({ title: "Image generated", description: "Your image is ready below." });
+        },
+        onError: (err) => {
+          toast({
+            variant: "destructive",
+            title: "Generation failed",
+            description: err instanceof Error ? err.message : "Unknown error",
+          });
+        },
+      },
+    );
+  };
+
+  return (
+    <Card className="border-border/50 bg-card shadow-sm">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-primary" />
+          Generate with this LoRA
+        </CardTitle>
+        <CardDescription className="text-xs">
+          Include your trigger word <span className="font-mono text-primary">{triggerWord}</span> in the prompt to invoke your trained subject.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <Textarea
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          placeholder={`e.g. a portrait of ${triggerWord} in a forest`}
+          rows={3}
+          className="bg-background border-border/50 font-mono text-sm"
+        />
+        <div className="flex justify-end">
+          <Button
+            onClick={handleGenerate}
+            disabled={generate.isPending || !prompt.trim()}
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            {generate.isPending ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Generating...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Generate Image
+              </>
+            )}
+          </Button>
+        </div>
+
+        <div className="pt-4 border-t border-border/50">
+          <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
+            <ImageIcon className="w-3 h-3" />
+            Recent Generations ({generations.length})
+          </p>
+          {isLoading ? (
+            <Skeleton className="h-32 w-full" />
+          ) : generations.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground/50 font-mono text-xs">
+              No images generated yet.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {generations.map((g) => (
+                <div
+                  key={g.id}
+                  className="rounded-md overflow-hidden border border-border/50 bg-background group relative"
+                >
+                  {g.status === "succeeded" && g.imageUrl ? (
+                    <a href={g.imageUrl} target="_blank" rel="noreferrer">
+                      <img
+                        src={g.imageUrl}
+                        alt={g.prompt}
+                        className="w-full aspect-square object-cover"
+                      />
+                    </a>
+                  ) : g.status === "failed" ? (
+                    <div className="w-full aspect-square flex items-center justify-center text-red-500/70 text-xs p-2 text-center">
+                      Failed
+                    </div>
+                  ) : (
+                    <div className="w-full aspect-square flex items-center justify-center">
+                      <RefreshCw className="w-5 h-5 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
+                  <div className="p-2 text-xs font-mono text-muted-foreground line-clamp-2">
+                    {g.prompt}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

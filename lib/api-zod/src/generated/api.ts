@@ -167,6 +167,35 @@ export const GetJobStatsResponse = zod.object({
 });
 
 /**
+ * @summary Generate an image using the trained LoRA
+ */
+export const GenerateImageParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GenerateImageBody = zod.object({
+  prompt: zod.string().min(1),
+});
+
+/**
+ * @summary List generated images for a training job
+ */
+export const ListGenerationsParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const ListGenerationsResponseItem = zod.object({
+  id: zod.number(),
+  jobId: zod.number(),
+  prompt: zod.string(),
+  imageUrl: zod.string().nullish(),
+  status: zod.string(),
+  errorMessage: zod.string().nullish(),
+  createdAt: zod.string(),
+});
+export const ListGenerationsResponse = zod.array(ListGenerationsResponseItem);
+
+/**
  * @summary Get a presigned URL for uploading a training image zip
  */
 export const PresignUploadBody = zod.object({

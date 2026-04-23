@@ -19,6 +19,8 @@ import type {
 import type {
   CreateJobBody,
   ErrorResponse,
+  GenerateImageBody,
+  Generation,
   HealthStatus,
   JobStats,
   ListJobsParams,
@@ -599,6 +601,180 @@ export function useGetJobStats<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getGetJobStatsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Generate an image using the trained LoRA
+ */
+export const getGenerateImageUrl = (id: number) => {
+  return `/api/jobs/${id}/generate`;
+};
+
+export const generateImage = async (
+  id: number,
+  generateImageBody: GenerateImageBody,
+  options?: RequestInit,
+): Promise<Generation> => {
+  return customFetch<Generation>(getGenerateImageUrl(id), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(generateImageBody),
+  });
+};
+
+export const getGenerateImageMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateImage>>,
+    TError,
+    { id: number; data: BodyType<GenerateImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateImage>>,
+  TError,
+  { id: number; data: BodyType<GenerateImageBody> },
+  TContext
+> => {
+  const mutationKey = ["generateImage"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateImage>>,
+    { id: number; data: BodyType<GenerateImageBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return generateImage(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateImageMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateImage>>
+>;
+export type GenerateImageMutationBody = BodyType<GenerateImageBody>;
+export type GenerateImageMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Generate an image using the trained LoRA
+ */
+export const useGenerateImage = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateImage>>,
+    TError,
+    { id: number; data: BodyType<GenerateImageBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateImage>>,
+  TError,
+  { id: number; data: BodyType<GenerateImageBody> },
+  TContext
+> => {
+  return useMutation(getGenerateImageMutationOptions(options));
+};
+
+/**
+ * @summary List generated images for a training job
+ */
+export const getListGenerationsUrl = (id: number) => {
+  return `/api/jobs/${id}/generations`;
+};
+
+export const listGenerations = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Generation[]> => {
+  return customFetch<Generation[]>(getListGenerationsUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListGenerationsQueryKey = (id: number) => {
+  return [`/api/jobs/${id}/generations`] as const;
+};
+
+export const getListGenerationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listGenerations>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGenerations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListGenerationsQueryKey(id);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listGenerations>>> = ({
+    signal,
+  }) => listGenerations(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof listGenerations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListGenerationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listGenerations>>
+>;
+export type ListGenerationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List generated images for a training job
+ */
+
+export function useListGenerations<
+  TData = Awaited<ReturnType<typeof listGenerations>>,
+  TError = ErrorType<unknown>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listGenerations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListGenerationsQueryOptions(id, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
