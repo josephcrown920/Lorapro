@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "LoRA Trainer"
+version = "1.0.0"
+id = "artifacts/lora-trainer"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 20554
+
+[services.development]
+run = "pnpm --filter @workspace/lora-trainer run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/lora-trainer", "run", "build" ]
+publicDir = "artifacts/lora-trainer/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20554"
+BASE_PATH = "/"

@@ -1,22 +1,24 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: LoRA Trainer API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: jobs
+    description: LoRA training job operations
+  - name: uploads
+    description: Image upload operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +26,151 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all training jobs
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [starting, processing, succeeded, failed, canceled]
+          required: false
+      responses:
+        "200":
+          description: List of training jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrainingJob"
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new LoRA training job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobBody"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingJob"
+
+  /jobs/{id}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a specific training job
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        "200":
+          description: Training job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingJob"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelJob
+      tags: [jobs]
+      summary: Cancel a training job
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        "200":
+          description: Job canceled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingJob"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/{id}/sync:
+    post:
+      operationId: syncJob
+      tags: [jobs]
+      summary: Sync job status from Replicate
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: integer
+          required: true
+      responses:
+        "200":
+          description: Synced job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TrainingJob"
+        "404":
+          description: Job not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /jobs/stats:
+    get:
+      operationId: getJobStats
+      tags: [jobs]
+      summary: Get job statistics summary
+      responses:
+        "200":
+          description: Job statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobStats"
+
+  /uploads/presign:
+    post:
+      operationId: presignUpload
+      tags: [uploads]
+      summary: Get a presigned URL for uploading a training image zip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PresignUploadBody"
+      responses:
+        "200":
+          description: Presigned upload info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PresignUploadResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +181,124 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    TrainingJob:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        status:
+          type: string
+          enum: [starting, processing, succeeded, failed, canceled]
+        replicateId:
+          type: string
+          nullable: true
+        triggerWord:
+          type: string
+        steps:
+          type: integer
+        loraRank:
+          type: integer
+        imageCount:
+          type: integer
+        outputUrl:
+          type: string
+          nullable: true
+        errorMessage:
+          type: string
+          nullable: true
+        logs:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+        - id
+        - name
+        - status
+        - triggerWord
+        - steps
+        - loraRank
+        - imageCount
+        - createdAt
+        - updatedAt
+
+    CreateJobBody:
+      type: object
+      properties:
+        name:
+          type: string
+        triggerWord:
+          type: string
+        steps:
+          type: integer
+          minimum: 100
+          maximum: 4000
+        loraRank:
+          type: integer
+          enum: [4, 8, 16, 32]
+        imageZipUrl:
+          type: string
+          description: Publicly accessible URL to a ZIP of training images
+      required:
+        - name
+        - triggerWord
+        - steps
+        - loraRank
+        - imageZipUrl
+
+    JobStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        starting:
+          type: integer
+        processing:
+          type: integer
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        canceled:
+          type: integer
+      required:
+        - total
+        - starting
+        - processing
+        - succeeded
+        - failed
+        - canceled
+
+    PresignUploadBody:
+      type: object
+      properties:
+        filename:
+          type: string
+        contentType:
+          type: string
+      required:
+        - filename
+        - contentType
+
+    PresignUploadResponse:
+      type: object
+      properties:
+        uploadUrl:
+          type: string
+        publicUrl:
+          type: string
+      required:
+        - uploadUrl
+        - publicUrl
