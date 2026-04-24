@@ -1,5 +1,6 @@
 import React, { useState, useRef } from "react";
 import { Link, useLocation } from "wouter";
+import { motion, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -287,12 +288,15 @@ export default function JobNew() {
                             addFiles(dropped);
                           }}
                           onClick={() => fileInputRef.current?.click()}
-                          className={`relative cursor-pointer rounded-lg border-2 border-dashed transition-all ${
+                          className={`relative cursor-pointer rounded-xl border-2 border-dashed transition-all duration-300 overflow-hidden glass-subtle ${
                             isDragging
-                              ? "border-primary bg-primary/10"
-                              : "border-border/50 bg-background hover:border-primary/50 hover:bg-muted/30"
-                          } p-8 text-center`}
+                              ? "border-primary bg-primary/15 scale-[1.01] glow-primary"
+                              : "border-white/10 hover:border-primary/40 hover:bg-white/[0.04]"
+                          } p-10 text-center`}
                         >
+                          {isDragging && (
+                            <div className="absolute inset-0 bg-primary/5 animate-pulse pointer-events-none" />
+                          )}
                           <input
                             ref={fileInputRef}
                             type="file"
@@ -305,7 +309,14 @@ export default function JobNew() {
                               e.target.value = "";
                             }}
                           />
-                          <UploadCloud className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
+                          <motion.div
+                            animate={isDragging ? { y: -4, scale: 1.1 } : { y: 0, scale: 1 }}
+                            transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                            className="relative inline-block mb-3"
+                          >
+                            <UploadCloud className={`w-10 h-10 mx-auto transition-colors ${isDragging ? "text-primary" : "text-muted-foreground"}`} />
+                            {isDragging && <div className="absolute inset-0 blur-xl bg-primary/60 -z-10" />}
+                          </motion.div>
                           <p className="text-sm font-medium text-foreground">
                             Drop images here or click to browse
                           </p>
@@ -337,10 +348,16 @@ export default function JobNew() {
                     </div>
 
                     <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 max-h-48 overflow-y-auto p-1">
+                      <AnimatePresence>
                       {files.map((file, idx) => (
-                        <div
+                        <motion.div
                           key={`${file.name}-${idx}`}
-                          className="relative group aspect-square rounded-md overflow-hidden border border-border/50 bg-muted/30"
+                          layout
+                          initial={{ opacity: 0, scale: 0.7 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.7 }}
+                          transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] as const }}
+                          className="relative group aspect-square rounded-md overflow-hidden glass border-white/10"
                         >
                           <img
                             src={URL.createObjectURL(file)}
@@ -355,8 +372,9 @@ export default function JobNew() {
                           >
                             <X className="w-3 h-3" />
                           </button>
-                        </div>
+                        </motion.div>
                       ))}
+                      </AnimatePresence>
                     </div>
 
                     {uploadStage === "idle" && (

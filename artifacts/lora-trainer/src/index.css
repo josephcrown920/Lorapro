@@ -182,12 +182,76 @@
     @apply border-border;
   }
 
+  html, body {
+    @apply font-sans antialiased text-foreground;
+    background: hsl(var(--background));
+  }
+
   body {
-    @apply font-sans antialiased bg-background text-foreground;
+    position: relative;
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* Animated ambient gradient orbs in the page background */
+  body::before,
+  body::after {
+    content: "";
+    position: fixed;
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 9999px;
+    filter: blur(120px);
+    opacity: 0.45;
+    will-change: transform;
+  }
+
+  body::before {
+    width: 60vw;
+    height: 60vw;
+    top: -20vw;
+    left: -15vw;
+    background: radial-gradient(circle at 30% 30%, hsl(262 80% 55% / 0.55), transparent 60%);
+    animation: orb-drift-a 22s ease-in-out infinite alternate;
+  }
+
+  body::after {
+    width: 55vw;
+    height: 55vw;
+    bottom: -20vw;
+    right: -15vw;
+    background: radial-gradient(circle at 70% 70%, hsl(190 90% 55% / 0.35), transparent 60%);
+    animation: orb-drift-b 28s ease-in-out infinite alternate;
+  }
+
+  /* Subtle film grain to make backgrounds feel alive */
+  body > *:not(script):not(style) {
+    position: relative;
+    z-index: 1;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: var(--font-display);
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted) / 0.4);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.5);
+    background-clip: padding-box;
+    border: 2px solid transparent;
   }
 }
 
@@ -195,4 +259,101 @@
   .font-display {
     font-family: var(--font-display);
   }
+
+  /* Glassmorphism — frosted card */
+  .glass {
+    background: hsl(var(--card) / 0.55);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid hsl(0 0% 100% / 0.08);
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.05) inset,
+      0 8px 32px -8px hsl(240 10% 0% / 0.5);
+  }
+
+  .glass-strong {
+    background: hsl(var(--card) / 0.75);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    border: 1px solid hsl(0 0% 100% / 0.1);
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.06) inset,
+      0 12px 40px -10px hsl(240 10% 0% / 0.6);
+  }
+
+  .glass-subtle {
+    background: hsl(var(--card) / 0.35);
+    backdrop-filter: blur(12px) saturate(130%);
+    -webkit-backdrop-filter: blur(12px) saturate(130%);
+    border: 1px solid hsl(0 0% 100% / 0.06);
+  }
+
+  /* Soft glow accents */
+  .glow-primary {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.25),
+      0 0 24px -4px hsl(var(--primary) / 0.4);
+  }
+
+  /* Breathing pulse for live/active indicators */
+  .breathe {
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+
+  /* Slow float for floating elements */
+  .float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
+
+  /* Shimmer line for skeletons / loading bars */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--primary) / 0.12) 50%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 2.4s linear infinite;
+  }
+
+  /* Live status dot */
+  .live-dot {
+    position: relative;
+  }
+  .live-dot::after {
+    content: "";
+    position: absolute;
+    inset: -4px;
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.4;
+    animation: live-ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+@keyframes orb-drift-a {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(8vw, 6vw) scale(1.08); }
+  100% { transform: translate(-4vw, 10vw) scale(0.95); }
+}
+@keyframes orb-drift-b {
+  0%   { transform: translate(0, 0) scale(1); }
+  50%  { transform: translate(-10vw, -6vw) scale(1.1); }
+  100% { transform: translate(6vw, -10vw) scale(0.9); }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.65; transform: scale(0.96); }
+}
+@keyframes float-slow {
+  0%, 100% { transform: translateY(0px); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+@keyframes live-ping {
+  0%   { transform: scale(1); opacity: 0.4; }
+  80%, 100% { transform: scale(2.2); opacity: 0; }
 }
