@@ -94,6 +94,34 @@ router.post("/jobs", async (req, res) => {
 
   const replicate = getReplicate();
 
+  const destOwner = process.env.REPLICATE_USERNAME || "me";
+  // Replicate model names must be lowercase, alphanumeric or dashes
+  const destName = `${triggerWord.toLowerCase().replace(/[^a-z0-9-]+/g, "-")}-lora`;
+  const destination = `${destOwner}/${destName}` as `${string}/${string}`;
+
+  // Replicate requires the destination model to exist BEFORE you can train into it.
+  // Try to create it; ignore "already exists" responses so re-training works.
+  try {
+    await replicate.models.create(destOwner, destName, {
+      visibility: "private",
+      hardware: "cpu",
+      description: `LoRA adapter for trigger word "${triggerWord}" — created by LoRA Forge`,
+    });
+    req.log.info({ destination }, "Created Replicate destination model");
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const alreadyExists =
+      /already exists|name already taken|already a model/i.test(errMsg);
+    if (!alreadyExists) {
+      req.log.error({ err, destination }, "Failed to create destination model");
+      res.status(500).json({
+        error: `Could not create destination model "${destination}" on Replicate: ${errMsg}`,
+      });
+      return;
+    }
+    req.log.info({ destination }, "Destination model already exists — reusing");
+  }
+
   let training;
   try {
     training = await replicate.trainings.create(
@@ -101,7 +129,7 @@ router.post("/jobs", async (req, res) => {
       REPLICATE_MODEL_NAME,
       REPLICATE_MODEL_VERSION,
       {
-        destination: `${process.env.REPLICATE_USERNAME || "me"}/${triggerWord.toLowerCase().replace(/\s+/g, "-")}-lora` as `${string}/${string}`,
+        destination,
         input: {
           steps,
           lora_rank: loraRank,
