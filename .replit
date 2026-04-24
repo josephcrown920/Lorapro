@@ -34,3 +34,8 @@ externalPort = 3000
 [[ports]]
 localPort = 20554
 externalPort = 3001
+
+[userenv]
+
+[userenv.shared]
+REPLICATE_USERNAME = "josephcrown920"
