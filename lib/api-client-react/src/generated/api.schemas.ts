@@ -87,6 +87,25 @@ export interface GenerateImageBody {
   prompt: string;
 }
 
+export interface RequestUploadUrlBody {
+  /** @minLength 1 */
+  name: string;
+  /** @minimum 1 */
+  size: number;
+  /** @minLength 1 */
+  contentType: string;
+}
+
+export interface RequestUploadUrlResponse {
+  uploadURL: string;
+  objectPath: string;
+  metadata?: RequestUploadUrlBody;
+}
+
+export interface ErrorEnvelope {
+  error: string;
+}
+
 export interface PresignUploadBody {
   filename: string;
   contentType: string;
