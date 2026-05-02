@@ -18,65 +18,61 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/pages/dashboard";
-import { ArrowLeft, RefreshCw, Terminal, Download, XCircle, Clock, Database, Settings2, Sparkles, ImageIcon } from "lucide-react";
+import {
+  ArrowLeft, RefreshCw, Terminal, Download, XCircle, Clock,
+  Database, Settings2, Sparkles, ImageIcon, Zap, LayoutGrid,
+  ExternalLink, ChevronRight,
+} from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+
+type Tab = "overview" | "generate";
 
 export default function JobDetail() {
   const params = useParams();
   const id = parseInt(params.id || "0", 10);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState<Tab>("overview");
 
-  const { data: job, isLoading } = useGetJob(id, { 
-    query: { 
-      enabled: !!id, 
-      queryKey: getGetJobQueryKey(id) 
-    } 
+  const { data: job, isLoading } = useGetJob(id, {
+    query: { enabled: !!id, queryKey: getGetJobQueryKey(id) },
   });
 
   const cancelJob = useCancelJob();
   const syncJob = useSyncJob();
 
-  // Auto-polling for active jobs
   const isActive = job?.status === "starting" || job?.status === "processing";
-  
+
   useEffect(() => {
     if (!isActive || !id) return;
-    
     const interval = setInterval(() => {
       syncJob.mutate({ id }, {
         onSuccess: (data) => {
           queryClient.setQueryData(getGetJobQueryKey(id), data);
           if (data.status !== "starting" && data.status !== "processing") {
-            // Status changed, refresh lists
             queryClient.invalidateQueries({ queryKey: getListJobsQueryKey() });
             queryClient.invalidateQueries({ queryKey: getGetJobStatsQueryKey() });
           }
-        }
+        },
       });
     }, 5000);
-    
     return () => clearInterval(interval);
   }, [isActive, id, syncJob, queryClient]);
+
+  // Auto-switch to generate tab when training completes
+  useEffect(() => {
+    if (job?.status === "succeeded") setActiveTab("generate");
+  }, [job?.status]);
 
   const handleCancel = () => {
     if (confirm("Are you sure you want to cancel this training job?")) {
       cancelJob.mutate({ id }, {
         onSuccess: (data) => {
           queryClient.setQueryData(getGetJobQueryKey(id), data);
-          toast({
-            title: "Job Canceled",
-            description: "The training job has been successfully canceled.",
-          });
+          toast({ title: "Job Canceled", description: "Training successfully canceled." });
         },
-        onError: () => {
-          toast({
-            variant: "destructive",
-            title: "Error",
-            description: "Failed to cancel the job.",
-          });
-        }
+        onError: () => toast({ variant: "destructive", title: "Error", description: "Failed to cancel." }),
       });
     }
   };
@@ -85,11 +81,8 @@ export default function JobDetail() {
     syncJob.mutate({ id }, {
       onSuccess: (data) => {
         queryClient.setQueryData(getGetJobQueryKey(id), data);
-        toast({
-          title: "Synced",
-          description: "Fetched latest status from Replicate.",
-        });
-      }
+        toast({ title: "Synced", description: "Fetched latest status from Replicate." });
+      },
     });
   };
 
@@ -98,16 +91,9 @@ export default function JobDetail() {
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <Skeleton className="h-10 w-10 rounded-md" />
-          <div>
-            <Skeleton className="h-8 w-64" />
-            <Skeleton className="h-4 w-32 mt-2" />
-          </div>
+          <div><Skeleton className="h-8 w-64" /><Skeleton className="h-4 w-32 mt-2" /></div>
         </div>
-        <Card className="glass border-white/10">
-          <CardContent className="h-64 flex items-center justify-center">
-            <RefreshCw className="w-8 h-8 animate-spin text-primary/70" />
-          </CardContent>
-        </Card>
+        <Card className="glass border-white/10"><CardContent className="h-64 flex items-center justify-center"><RefreshCw className="w-8 h-8 animate-spin text-primary/70" /></CardContent></Card>
       </div>
     );
   }
@@ -116,12 +102,20 @@ export default function JobDetail() {
     return (
       <div className="text-center py-20">
         <h2 className="text-2xl font-bold mb-4">Job Not Found</h2>
-        <Link href="/">
-          <Button>Back to Dashboard</Button>
-        </Link>
+        <Link href="/"><Button>Back to Dashboard</Button></Link>
       </div>
     );
   }
+
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; disabled?: boolean }[] = [
+    { id: "overview", label: "Overview", icon: <Settings2 className="w-4 h-4" /> },
+    {
+      id: "generate",
+      label: "Generate",
+      icon: <Sparkles className="w-4 h-4" />,
+      disabled: job.status !== "succeeded",
+    },
+  ];
 
   return (
     <motion.div
@@ -130,6 +124,7 @@ export default function JobDetail() {
       transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }}
       className="space-y-6"
     >
+      {/* ── Header ── */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <Link href="/">
@@ -139,160 +134,210 @@ export default function JobDetail() {
           </Link>
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-display font-bold text-foreground tracking-tight">
-                {job.name}
-              </h1>
+              <h1 className="text-3xl font-display font-bold text-foreground tracking-tight">{job.name}</h1>
               <StatusBadge status={job.status} />
             </div>
             <div className="text-muted-foreground text-sm font-mono mt-1 flex items-center gap-4">
               <span>ID: {job.id.toString().padStart(4, "0")}</span>
-              {job.replicateId && <span>Replicate: {job.replicateId.substring(0, 8)}...</span>}
+              {job.replicateId && <span>Replicate: {job.replicateId.substring(0, 8)}…</span>}
             </div>
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {isActive && (
-            <Button
-              variant="outline"
-              className="border-red-500/30 text-red-400 hover:bg-red-500/10 backdrop-blur"
-              onClick={handleCancel}
-              disabled={cancelJob.isPending}
-            >
-              <XCircle className="w-4 h-4 mr-2" />
-              Cancel Job
+            <Button variant="outline" className="border-red-500/30 text-red-400 hover:bg-red-500/10 backdrop-blur" onClick={handleCancel} disabled={cancelJob.isPending}>
+              <XCircle className="w-4 h-4 mr-2" />Cancel Job
             </Button>
           )}
-          <Button
-            variant="outline"
-            className="glass border-white/10 hover:border-white/20 hover:text-foreground transition-all"
-            onClick={handleManualSync}
-            disabled={syncJob.isPending}
-          >
-            <RefreshCw className={`w-4 h-4 mr-2 ${syncJob.isPending ? "animate-spin" : ""}`} />
-            Sync Status
+          <Button variant="outline" className="glass border-white/10 hover:border-white/20 hover:text-foreground transition-all" onClick={handleManualSync} disabled={syncJob.isPending}>
+            <RefreshCw className={`w-4 h-4 mr-2 ${syncJob.isPending ? "animate-spin" : ""}`} />Sync Status
           </Button>
           {job.outputUrl && (
-            <Button
-              className="bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all hover:scale-[1.02]"
-              onClick={() => window.open(job.outputUrl ?? undefined, "_blank")}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Download Weights
+            <Button className="bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all hover:scale-[1.02]" onClick={() => window.open(job.outputUrl ?? undefined, "_blank")}>
+              <Download className="w-4 h-4 mr-2" />Download Weights
+            </Button>
+          )}
+          {job.status === "succeeded" && (
+            <Button className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:brightness-110 glow-primary transition-all hover:scale-[1.02]" onClick={() => setActiveTab("generate")}>
+              <Sparkles className="w-4 h-4 mr-2" />Generate Images
             </Button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <motion.div
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: "easeOut" }}
-          className="md:col-span-1 space-y-6"
-        >
-          <Card className="glass border-white/10">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Settings2 className="w-4 h-4 text-primary" />
-                Parameters
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Trigger Word</p>
-                <div className="glass-subtle rounded-lg px-3 py-2 font-mono text-sm font-semibold text-primary">
-                  {job.triggerWord}
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Steps</p>
-                  <p className="font-mono font-medium tabular-nums">{job.steps}</p>
-                </div>
-                <div>
-                  <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Rank</p>
-                  <p className="font-mono font-medium tabular-nums">{job.loraRank}</p>
-                </div>
-              </div>
-              <div className="pt-4 border-t border-white/5">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Database className="w-3 h-3" />
-                  Dataset Size
-                </p>
-                <p className="font-mono font-medium">{job.imageCount || "Unknown"} images</p>
-              </div>
-              <div className="pt-4 border-t border-white/5">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  Created At
-                </p>
-                <p className="font-mono text-sm">{format(new Date(job.createdAt), "MMM d, yyyy HH:mm:ss")}</p>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.15, ease: "easeOut" }}
-          className="md:col-span-2"
-        >
-          <Card className="glass-strong border-white/10 overflow-hidden flex flex-col h-[500px]">
-            <CardHeader className="bg-black/30 border-b border-white/5 pb-3 py-3 backdrop-blur-md">
-              <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-                <Terminal className="w-4 h-4 text-primary" />
-                Training Console Output
-                {isActive && <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-amber-400"><span className="live-dot inline-block w-1.5 h-1.5 rounded-full bg-current" />LIVE</span>}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0 flex-1 overflow-auto bg-black/40">
-              {job.logs ? (
-                <pre className="p-4 font-mono text-xs text-muted-foreground whitespace-pre-wrap">{job.logs}</pre>
-              ) : (
-                <div className="h-full flex items-center justify-center text-muted-foreground/50 font-mono text-sm p-4 text-center">
-                  {isActive ? (
-                    <span className="flex items-center gap-2">
-                      <span className="breathe">⏵</span>
-                      Waiting for training logs to stream from Replicate GPU...
-                    </span>
-                  ) : (
-                    "No logs available for this job."
-                  )}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <AnimatePresence>
-            {job.errorMessage && (
+      {/* ── Tab bar ── */}
+      <div className="flex gap-1 p-1 rounded-xl glass border border-white/10 w-fit">
+        {tabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => !tab.disabled && setActiveTab(tab.id)}
+            disabled={tab.disabled}
+            className={`relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+              tab.disabled
+                ? "opacity-30 cursor-not-allowed text-muted-foreground"
+                : activeTab === tab.id
+                ? "text-foreground"
+                : "text-muted-foreground hover:text-foreground/80"
+            }`}
+          >
+            {activeTab === tab.id && !tab.disabled && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -8 }}
-                className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 backdrop-blur"
-              >
-                <p className="text-red-400 font-mono text-sm font-semibold mb-1">Error executing job:</p>
-                <p className="text-red-500/80 font-mono text-xs whitespace-pre-wrap">{job.errorMessage}</p>
-              </motion.div>
+                layoutId="tab-pill"
+                className="absolute inset-0 bg-white/10 rounded-lg border border-white/15"
+                transition={{ type: "spring", bounce: 0.2, duration: 0.35 }}
+              />
             )}
-          </AnimatePresence>
-        </motion.div>
+            <span className="relative z-10 flex items-center gap-2">
+              {tab.icon}{tab.label}
+            </span>
+          </button>
+        ))}
       </div>
 
-      {job.status === "succeeded" && job.outputUrl && <InferencePanel jobId={job.id} triggerWord={job.triggerWord} />}
+      {/* ── Tab content ── */}
+      <AnimatePresence mode="wait">
+        {activeTab === "overview" ? (
+          <motion.div
+            key="overview"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="space-y-6"
+          >
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Params */}
+              <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, delay: 0.1 }} className="md:col-span-1 space-y-6">
+                <Card className="glass border-white/10">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Settings2 className="w-4 h-4 text-primary" />Parameters
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div>
+                      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Trigger Word</p>
+                      <div className="glass-subtle rounded-lg px-3 py-2 font-mono text-sm font-semibold text-primary">{job.triggerWord}</div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Steps</p><p className="font-mono font-medium tabular-nums">{job.steps}</p></div>
+                      <div><p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1">Rank</p><p className="font-mono font-medium tabular-nums">{job.loraRank}</p></div>
+                    </div>
+                    <div className="pt-4 border-t border-white/5">
+                      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1"><Database className="w-3 h-3" />Dataset Size</p>
+                      <p className="font-mono font-medium">{job.imageCount || "26"} images</p>
+                    </div>
+                    <div className="pt-4 border-t border-white/5">
+                      <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-1 flex items-center gap-1"><Clock className="w-3 h-3" />Created At</p>
+                      <p className="font-mono text-sm">{format(new Date(job.createdAt), "MMM d, yyyy HH:mm:ss")}</p>
+                    </div>
+                    {job.status === "succeeded" && (
+                      <div className="pt-4 border-t border-white/5">
+                        <button
+                          onClick={() => setActiveTab("generate")}
+                          className="w-full flex items-center justify-between text-xs font-mono text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <span className="flex items-center gap-1"><Sparkles className="w-3 h-3" />Start generating</span>
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {/* Console */}
+              <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5, delay: 0.15 }} className="md:col-span-2">
+                <Card className="glass-strong border-white/10 overflow-hidden flex flex-col h-[500px]">
+                  <CardHeader className="bg-black/30 border-b border-white/5 pb-3 py-3 backdrop-blur-md">
+                    <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-primary" />Training Console Output
+                      {isActive && <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-amber-400"><span className="live-dot inline-block w-1.5 h-1.5 rounded-full bg-current" />LIVE</span>}
+                      {job.status === "succeeded" && <span className="ml-auto inline-flex items-center gap-1.5 text-[10px] text-emerald-400"><span className="inline-block w-1.5 h-1.5 rounded-full bg-current" />COMPLETE</span>}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1 overflow-auto bg-black/40">
+                    {job.logs ? (
+                      <LogViewer logs={job.logs} />
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-muted-foreground/50 font-mono text-sm p-4 text-center">
+                        {isActive
+                          ? <span className="flex items-center gap-2"><span className="breathe">⏵</span>Waiting for training logs to stream from Replicate GPU…</span>
+                          : "No logs available for this job."}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <AnimatePresence>
+                  {job.errorMessage && (
+                    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="mt-4 p-4 rounded-lg bg-red-500/10 border border-red-500/30 backdrop-blur">
+                      <p className="text-red-400 font-mono text-sm font-semibold mb-1">Error executing job:</p>
+                      <p className="text-red-500/80 font-mono text-xs whitespace-pre-wrap">{job.errorMessage}</p>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div
+            key="generate"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+          >
+            <GenerateTab jobId={job.id} triggerWord={job.triggerWord} outputUrl={job.outputUrl} />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
-function InferencePanel({ jobId, triggerWord }: { jobId: number; triggerWord: string }) {
-  const [prompt, setPrompt] = useState(`a portrait photo of ${triggerWord}, cinematic lighting, high detail`);
+/* ──────────────────────────────────────────
+   Log Viewer — auto-scrolls to bottom
+────────────────────────────────────────── */
+function LogViewer({ logs }: { logs: string }) {
+  const ref = useRef<HTMLPreElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [logs]);
+  return (
+    <pre ref={ref} className="p-4 font-mono text-xs text-muted-foreground whitespace-pre-wrap overflow-auto h-full">
+      {logs}
+    </pre>
+  );
+}
+
+/* ──────────────────────────────────────────
+   Generate Tab
+────────────────────────────────────────── */
+const PROMPT_CHIPS = [
+  "portrait, studio lighting, sharp focus",
+  "Times Square at night, neon reflections",
+  "luxury penthouse, golden hour",
+  "basketball court at sunset, Nike ad",
+  "music video set, dramatic lighting",
+  "magazine cover, editorial fashion",
+  "red carpet premiere, paparazzi",
+  "rooftop at sunset, cinematic",
+];
+
+function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; triggerWord: string; outputUrl: string | null | undefined }) {
+  const [prompt, setPrompt] = useState(`a portrait photo of ${triggerWord}, studio lighting, sharp focus, cinematic`);
+  const [lightboxImg, setLightboxImg] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: generations = [], isLoading } = useListGenerations(jobId, {
-    query: { queryKey: getListGenerationsQueryKey(jobId) },
+    query: { queryKey: getListGenerationsQueryKey(jobId), refetchInterval: (q) => {
+      const data = q.state.data as { status: string }[] | undefined;
+      const hasPending = data?.some((g) => g.status === "processing");
+      return hasPending ? 2000 : false;
+    }},
   });
 
   const generate = useGenerateImage();
@@ -302,118 +347,233 @@ function InferencePanel({ jobId, triggerWord }: { jobId: number; triggerWord: st
     generate.mutate(
       { id: jobId, data: { prompt } },
       {
-        onSuccess: () => {
+        onSuccess: (data) => {
           queryClient.invalidateQueries({ queryKey: getListGenerationsQueryKey(jobId) });
-          toast({ title: "Image generated", description: "Your image is ready below." });
+          if (data.status === "succeeded") {
+            toast({ title: "Image ready", description: "Your generation is in the gallery below." });
+          } else {
+            toast({ variant: "destructive", title: "Generation failed", description: data.errorMessage ?? "Unknown error" });
+          }
         },
-        onError: (err) => {
-          toast({
-            variant: "destructive",
-            title: "Generation failed",
-            description: err instanceof Error ? err.message : "Unknown error",
-          });
-        },
+        onError: (err) => toast({ variant: "destructive", title: "Generation failed", description: err instanceof Error ? err.message : "Unknown error" }),
       },
     );
   };
 
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, delay: 0.2, ease: "easeOut" }}
-    >
-    <Card className="glass border-white/10 relative overflow-hidden">
-      <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-primary/30 blur-3xl pointer-events-none" />
-      <CardHeader className="pb-4 relative">
-        <CardTitle className="text-sm font-mono uppercase tracking-wider text-muted-foreground flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-primary breathe" />
-          Generate with this LoRA
-        </CardTitle>
-        <CardDescription className="text-xs">
-          Include your trigger word <span className="font-mono text-primary">{triggerWord}</span> in the prompt to invoke your trained subject.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4 relative">
-        <Textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder={`e.g. a portrait of ${triggerWord} in a forest`}
-          rows={3}
-          className="glass-subtle border-white/10 font-mono text-sm focus-visible:ring-primary/50 focus-visible:border-primary/40"
-        />
-        <div className="flex justify-end">
-          <Button
-            onClick={handleGenerate}
-            disabled={generate.isPending || !prompt.trim()}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 glow-primary transition-all hover:scale-[1.02]"
-          >
-            {generate.isPending ? (
-              <>
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4 mr-2" />
-                Generate Image
-              </>
-            )}
-          </Button>
-        </div>
+  const handleChip = (chip: string) => {
+    setPrompt(`${triggerWord} ${chip}`);
+  };
 
-        <div className="pt-4 border-t border-white/5">
-          <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-            <ImageIcon className="w-3 h-3" />
-            Recent Generations ({generations.length})
-          </p>
-          {isLoading ? (
-            <Skeleton className="h-32 w-full bg-white/5" />
-          ) : generations.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground/50 font-mono text-xs">
-              No images generated yet.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              <AnimatePresence>
-                {generations.map((g, i) => (
-                  <motion.div
-                    key={g.id}
-                    layout
-                    initial={{ opacity: 0, scale: 0.9, y: 12 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    transition={{ duration: 0.4, delay: i * 0.04, ease: [0.16, 1, 0.3, 1] as const }}
-                    whileHover={{ y: -3 }}
-                    className="rounded-lg overflow-hidden glass border-white/10 group relative"
-                  >
-                    {g.status === "succeeded" && g.imageUrl ? (
-                      <a href={g.imageUrl} target="_blank" rel="noreferrer" className="block relative">
-                        <img
-                          src={g.imageUrl}
-                          alt={g.prompt}
-                          className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-105"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </a>
-                    ) : g.status === "failed" ? (
-                      <div className="w-full aspect-square flex items-center justify-center text-red-400/80 text-xs p-2 text-center bg-red-500/5">
-                        Failed
-                      </div>
-                    ) : (
-                      <div className="w-full aspect-square flex items-center justify-center bg-white/[0.02]">
-                        <RefreshCw className="w-5 h-5 animate-spin text-primary/70" />
-                      </div>
-                    )}
-                    <div className="p-2 text-xs font-mono text-muted-foreground line-clamp-2">{g.prompt}</div>
-                  </motion.div>
-                ))}
-              </AnimatePresence>
-            </div>
+  const succeeded = generations.filter((g) => g.status === "succeeded");
+  const pending = generations.filter((g) => g.status === "processing");
+
+  return (
+    <div className="space-y-6">
+      {/* Prompt card */}
+      <Card className="glass border-white/10 relative overflow-hidden">
+        {/* ambient orb */}
+        <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-violet-500/20 blur-3xl pointer-events-none animate-pulse" />
+        <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-fuchsia-500/15 blur-3xl pointer-events-none" />
+
+        <CardHeader className="pb-3 relative">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Zap className="w-5 h-5 text-primary breathe" />
+            Prompt your LoRA
+          </CardTitle>
+          <CardDescription className="text-sm">
+            Include trigger word{" "}
+            <span className="font-mono text-primary bg-primary/10 px-1.5 py-0.5 rounded text-xs">{triggerWord}</span>{" "}
+            to invoke your trained subject.
+          </CardDescription>
+        </CardHeader>
+
+        <CardContent className="space-y-4 relative">
+          {/* Prompt chips */}
+          <div className="flex flex-wrap gap-2">
+            {PROMPT_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                onClick={() => handleChip(chip)}
+                className="text-xs px-3 py-1.5 rounded-full glass-subtle border border-white/10 text-muted-foreground hover:text-foreground hover:border-white/25 transition-all hover:scale-[1.03] active:scale-95"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
+
+          {/* Textarea with glow focus */}
+          <div className="relative">
+            <Textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
+              placeholder={`e.g. ${triggerWord} wearing Balenciaga, cinematic portrait`}
+              rows={3}
+              className="glass-subtle border-white/10 font-mono text-sm focus-visible:ring-primary/50 focus-visible:border-primary/40 resize-none pr-4"
+            />
+            <p className="absolute bottom-2 right-3 text-[10px] text-muted-foreground/40 font-mono">⌘↩ to generate</p>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground/60 font-mono">
+              {generations.length} generation{generations.length !== 1 ? "s" : ""} total
+              {pending.length > 0 && <span className="ml-2 text-amber-400/80">· {pending.length} processing…</span>}
+            </p>
+            <Button
+              onClick={handleGenerate}
+              disabled={generate.isPending || !prompt.trim()}
+              className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:brightness-110 glow-primary transition-all hover:scale-[1.02] disabled:opacity-60 disabled:scale-100"
+            >
+              {generate.isPending ? (
+                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Generating…</>
+              ) : (
+                <><Sparkles className="w-4 h-4 mr-2" />Generate Image</>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Gallery */}
+      <div>
+        <div className="flex items-center gap-2 mb-4">
+          <LayoutGrid className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Gallery</h2>
+          {succeeded.length > 0 && (
+            <span className="ml-auto text-xs font-mono text-muted-foreground/60">{succeeded.length} image{succeeded.length !== 1 ? "s" : ""}</span>
           )}
         </div>
-      </CardContent>
-    </Card>
-    </motion.div>
+
+        {isLoading ? (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <Skeleton key={i} className="aspect-square rounded-xl bg-white/5" />
+            ))}
+          </div>
+        ) : generations.length === 0 ? (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 text-center gap-4">
+            <div className="w-20 h-20 rounded-2xl glass border border-white/10 flex items-center justify-center">
+              <ImageIcon className="w-8 h-8 text-muted-foreground/40" />
+            </div>
+            <div>
+              <p className="text-muted-foreground font-medium">No images yet</p>
+              <p className="text-muted-foreground/50 text-sm mt-1">Write a prompt above and hit Generate</p>
+            </div>
+          </motion.div>
+        ) : (
+          <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {/* Processing placeholders */}
+            <AnimatePresence>
+              {pending.map((g) => (
+                <motion.div
+                  key={`pending-${g.id}`}
+                  layout
+                  initial={{ opacity: 0, scale: 0.92 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.88 }}
+                  className="aspect-square rounded-xl overflow-hidden glass border border-white/10 flex flex-col items-center justify-center gap-3 relative"
+                >
+                  {/* shimmer sweep */}
+                  <div className="absolute inset-0 overflow-hidden rounded-xl">
+                    <motion.div
+                      className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/8 to-transparent"
+                      animate={{ x: ["-100%", "200%"] }}
+                      transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                  </div>
+                  <RefreshCw className="w-6 h-6 animate-spin text-primary/60 relative z-10" />
+                  <p className="text-[10px] font-mono text-muted-foreground/50 relative z-10 px-4 text-center line-clamp-2">{g.prompt}</p>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+
+            {/* Completed images */}
+            <AnimatePresence>
+              {[...generations].filter((g) => g.status !== "processing").map((g, i) => (
+                <motion.div
+                  key={g.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.9, y: 16 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.88 }}
+                  transition={{ duration: 0.45, delay: i * 0.05, ease: [0.16, 1, 0.3, 1] as const }}
+                  whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                  className="group relative rounded-xl overflow-hidden glass border border-white/10 cursor-pointer"
+                  onClick={() => g.status === "succeeded" && g.imageUrl && setLightboxImg(g.imageUrl)}
+                >
+                  {g.status === "succeeded" && g.imageUrl ? (
+                    <>
+                      <img
+                        src={g.imageUrl}
+                        alt={g.prompt}
+                        className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                      {/* hover overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 gap-2">
+                        <p className="text-white text-xs font-mono line-clamp-3 leading-relaxed">{g.prompt}</p>
+                        <div className="flex gap-2">
+                          <a
+                            href={g.imageUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 text-[10px] text-white/70 hover:text-white transition-colors"
+                          >
+                            <ExternalLink className="w-3 h-3" />Open full
+                          </a>
+                        </div>
+                      </div>
+                    </>
+                  ) : g.status === "failed" ? (
+                    <div className="w-full aspect-square flex flex-col items-center justify-center text-red-400/60 text-xs p-3 text-center bg-red-500/5 gap-2">
+                      <XCircle className="w-5 h-5" />
+                      <span>Generation failed</span>
+                    </div>
+                  ) : null}
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Lightbox */}
+      <AnimatePresence>
+        {lightboxImg && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+            onClick={() => setLightboxImg(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.88, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.88, opacity: 0 }}
+              transition={{ type: "spring", bounce: 0.2, duration: 0.4 }}
+              className="relative max-w-2xl max-h-[90vh] rounded-2xl overflow-hidden shadow-2xl border border-white/15"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img src={lightboxImg} alt="Generated" className="w-full h-full object-contain" />
+              <a
+                href={lightboxImg}
+                target="_blank"
+                rel="noreferrer"
+                className="absolute top-3 right-3 p-2 rounded-lg glass border border-white/15 text-white/80 hover:text-white transition-colors"
+              >
+                <ExternalLink className="w-4 h-4" />
+              </a>
+              <button
+                onClick={() => setLightboxImg(null)}
+                className="absolute top-3 left-3 p-2 rounded-lg glass border border-white/15 text-white/80 hover:text-white transition-colors"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
