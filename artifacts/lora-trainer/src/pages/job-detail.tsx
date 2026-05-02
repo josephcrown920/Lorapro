@@ -333,45 +333,67 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
   const queryClient = useQueryClient();
 
   const { data: generations = [], isLoading } = useListGenerations(jobId, {
-    query: { queryKey: getListGenerationsQueryKey(jobId), refetchInterval: (q) => {
-      const data = q.state.data as { status: string }[] | undefined;
-      const hasPending = data?.some((g) => g.status === "processing");
-      return hasPending ? 2000 : false;
-    }},
+    query: {
+      queryKey: getListGenerationsQueryKey(jobId),
+      refetchInterval: (q) => {
+        const data = q.state.data as { status: string }[] | undefined;
+        return data?.some((g) => g.status === "processing") ? 2000 : false;
+      },
+    },
   });
 
   const generate = useGenerateImage();
 
-  const handleGenerate = () => {
-    if (!prompt.trim()) return;
+  // Queue a generation — returns immediately (async backend)
+  const queueGeneration = (p: string) => {
     generate.mutate(
-      { id: jobId, data: { prompt } },
+      { id: jobId, data: { prompt: p } },
       {
-        onSuccess: (data) => {
+        onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListGenerationsQueryKey(jobId) });
-          if (data.status === "succeeded") {
-            toast({ title: "Image ready", description: "Your generation is in the gallery below." });
-          } else {
-            toast({ variant: "destructive", title: "Generation failed", description: data.errorMessage ?? "Unknown error" });
-          }
         },
-        onError: (err) => toast({ variant: "destructive", title: "Generation failed", description: err instanceof Error ? err.message : "Unknown error" }),
+        onError: (err) =>
+          toast({ variant: "destructive", title: "Failed to queue", description: err instanceof Error ? err.message : "Unknown error" }),
       },
     );
   };
 
-  const handleChip = (chip: string) => {
-    setPrompt(`${triggerWord} ${chip}`);
-  };
+  const handleGenerate = () => { if (prompt.trim()) queueGeneration(prompt); };
+  const handleRetry = (p: string) => queueGeneration(p);
+  const handleChip = (chip: string) => setPrompt(`${triggerWord} ${chip}`);
 
   const succeeded = generations.filter((g) => g.status === "succeeded");
-  const pending = generations.filter((g) => g.status === "processing");
+  const pending   = generations.filter((g) => g.status === "processing");
+  const failed    = generations.filter((g) => g.status === "failed");
+
+  // Detect auto-preview state: processing rows exist but none succeeded yet
+  const isAutoPreviewRunning = pending.length > 0 && succeeded.length === 0;
 
   return (
     <div className="space-y-6">
+      {/* Auto-preview banner */}
+      <AnimatePresence>
+        {isAutoPreviewRunning && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="flex items-center gap-3 px-4 py-3 rounded-xl glass border border-violet-500/30 bg-violet-500/10"
+          >
+            <span className="relative flex h-3 w-3 flex-shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-violet-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-violet-500" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-violet-200">Auto-preview in progress</p>
+              <p className="text-xs text-violet-300/60">Generating 3 preview shots from your weights — they'll appear below as they complete.</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Prompt card */}
       <Card className="glass border-white/10 relative overflow-hidden">
-        {/* ambient orb */}
         <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-violet-500/20 blur-3xl pointer-events-none animate-pulse" />
         <div className="absolute -bottom-16 -left-16 w-56 h-56 rounded-full bg-fuchsia-500/15 blur-3xl pointer-events-none" />
 
@@ -388,7 +410,6 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
         </CardHeader>
 
         <CardContent className="space-y-4 relative">
-          {/* Prompt chips */}
           <div className="flex flex-wrap gap-2">
             {PROMPT_CHIPS.map((chip) => (
               <button
@@ -401,7 +422,6 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
             ))}
           </div>
 
-          {/* Textarea with glow focus */}
           <div className="relative">
             <Textarea
               value={prompt}
@@ -409,26 +429,25 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleGenerate(); }}
               placeholder={`e.g. ${triggerWord} wearing Balenciaga, cinematic portrait`}
               rows={3}
-              className="glass-subtle border-white/10 font-mono text-sm focus-visible:ring-primary/50 focus-visible:border-primary/40 resize-none pr-4"
+              className="glass-subtle border-white/10 font-mono text-sm focus-visible:ring-primary/50 focus-visible:border-primary/40 resize-none"
             />
-            <p className="absolute bottom-2 right-3 text-[10px] text-muted-foreground/40 font-mono">⌘↩ to generate</p>
+            <p className="absolute bottom-2 right-3 text-[10px] text-muted-foreground/40 font-mono pointer-events-none">⌘↩ to generate</p>
           </div>
 
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted-foreground/60 font-mono">
-              {generations.length} generation{generations.length !== 1 ? "s" : ""} total
-              {pending.length > 0 && <span className="ml-2 text-amber-400/80">· {pending.length} processing…</span>}
+              {succeeded.length} ready
+              {pending.length > 0 && <span className="ml-2 text-amber-400/80">· {pending.length} generating…</span>}
+              {failed.length > 0 && <span className="ml-2 text-red-400/60">· {failed.length} failed</span>}
             </p>
             <Button
               onClick={handleGenerate}
               disabled={generate.isPending || !prompt.trim()}
               className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:brightness-110 glow-primary transition-all hover:scale-[1.02] disabled:opacity-60 disabled:scale-100"
             >
-              {generate.isPending ? (
-                <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Generating…</>
-              ) : (
-                <><Sparkles className="w-4 h-4 mr-2" />Generate Image</>
-              )}
+              {generate.isPending
+                ? <><RefreshCw className="w-4 h-4 mr-2 animate-spin" />Queuing…</>
+                : <><Sparkles className="w-4 h-4 mr-2" />Generate Image</>}
             </Button>
           </div>
         </CardContent>
@@ -440,15 +459,15 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
           <LayoutGrid className="w-4 h-4 text-primary" />
           <h2 className="text-sm font-mono uppercase tracking-wider text-muted-foreground">Gallery</h2>
           {succeeded.length > 0 && (
-            <span className="ml-auto text-xs font-mono text-muted-foreground/60">{succeeded.length} image{succeeded.length !== 1 ? "s" : ""}</span>
+            <span className="ml-auto text-xs font-mono text-muted-foreground/60">
+              {succeeded.length} image{succeeded.length !== 1 ? "s" : ""}
+            </span>
           )}
         </div>
 
         {isLoading ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="aspect-square rounded-xl bg-white/5" />
-            ))}
+            {[...Array(3)].map((_, i) => <Skeleton key={i} className="aspect-square rounded-xl bg-white/5" />)}
           </div>
         ) : generations.length === 0 ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-20 text-center gap-4">
@@ -462,7 +481,7 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
           </motion.div>
         ) : (
           <motion.div layout className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-            {/* Processing placeholders */}
+            {/* Processing cards (shimmer) */}
             <AnimatePresence>
               {pending.map((g) => (
                 <motion.div
@@ -473,10 +492,9 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
                   exit={{ opacity: 0, scale: 0.88 }}
                   className="aspect-square rounded-xl overflow-hidden glass border border-white/10 flex flex-col items-center justify-center gap-3 relative"
                 >
-                  {/* shimmer sweep */}
                   <div className="absolute inset-0 overflow-hidden rounded-xl">
                     <motion.div
-                      className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/8 to-transparent"
+                      className="absolute inset-0 bg-gradient-to-r from-transparent via-white/8 to-transparent"
                       animate={{ x: ["-100%", "200%"] }}
                       transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
                     />
@@ -487,9 +505,9 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
               ))}
             </AnimatePresence>
 
-            {/* Completed images */}
+            {/* Succeeded + failed cards */}
             <AnimatePresence>
-              {[...generations].filter((g) => g.status !== "processing").map((g, i) => (
+              {generations.filter((g) => g.status !== "processing").map((g, i) => (
                 <motion.div
                   key={g.id}
                   layout
@@ -508,28 +526,32 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
                         alt={g.prompt}
                         className="w-full aspect-square object-cover transition-transform duration-500 group-hover:scale-105"
                       />
-                      {/* hover overlay */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 gap-2">
                         <p className="text-white text-xs font-mono line-clamp-3 leading-relaxed">{g.prompt}</p>
-                        <div className="flex gap-2">
-                          <a
-                            href={g.imageUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1 text-[10px] text-white/70 hover:text-white transition-colors"
-                          >
-                            <ExternalLink className="w-3 h-3" />Open full
-                          </a>
-                        </div>
+                        <a
+                          href={g.imageUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1 text-[10px] text-white/70 hover:text-white transition-colors"
+                        >
+                          <ExternalLink className="w-3 h-3" />Open full size
+                        </a>
                       </div>
                     </>
-                  ) : g.status === "failed" ? (
-                    <div className="w-full aspect-square flex flex-col items-center justify-center text-red-400/60 text-xs p-3 text-center bg-red-500/5 gap-2">
-                      <XCircle className="w-5 h-5" />
-                      <span>Generation failed</span>
+                  ) : (
+                    /* Failed card with retry */
+                    <div className="w-full aspect-square flex flex-col items-center justify-center text-red-400/70 text-xs p-4 text-center bg-red-500/5 gap-3">
+                      <XCircle className="w-6 h-6" />
+                      <p className="font-mono text-[10px] text-red-400/50 line-clamp-2">{g.prompt}</p>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleRetry(g.prompt); }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg glass border border-red-500/20 hover:border-red-400/40 text-red-400/80 hover:text-red-300 transition-all text-[10px] font-mono hover:scale-105 active:scale-95"
+                      >
+                        <RefreshCw className="w-3 h-3" />Retry
+                      </button>
                     </div>
-                  ) : null}
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
@@ -544,7 +566,7 @@ function GenerateTab({ jobId, triggerWord, outputUrl }: { jobId: number; trigger
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-6"
             onClick={() => setLightboxImg(null)}
           >
             <motion.div

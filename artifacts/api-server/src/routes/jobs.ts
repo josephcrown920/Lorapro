@@ -1,8 +1,9 @@
 import { Router, type IRouter } from "express";
 import { db } from "@workspace/db";
-import { trainingJobsTable } from "@workspace/db";
+import { trainingJobsTable, generationsTable } from "@workspace/db";
 import { eq, desc, sql } from "drizzle-orm";
 import Replicate from "replicate";
+import { triggerAutoPreview } from "./generations.js";
 import {
   CreateJobBody,
   GetJobParams,
@@ -265,6 +266,8 @@ router.post("/jobs/:id/sync", async (req, res) => {
       : job.errorMessage;
     const logs = training.logs ?? job.logs;
 
+    const prevStatus = job.status;
+
     const [updated] = await db
       .update(trainingJobsTable)
       .set({
@@ -278,6 +281,29 @@ router.post("/jobs/:id/sync", async (req, res) => {
       .returning();
 
     res.json(updated);
+
+    // Auto-preview: when a job first reaches "succeeded", fire 3 preset
+    // generations in the background so the gallery is never empty.
+    if (
+      newStatus === "succeeded" &&
+      prevStatus !== "succeeded" &&
+      updated.outputUrl
+    ) {
+      const existing = await db
+        .select({ id: generationsTable.id })
+        .from(generationsTable)
+        .where(eq(generationsTable.jobId, parsed.data.id))
+        .limit(1);
+
+      if (existing.length === 0) {
+        req.log.info({ jobId: parsed.data.id }, "Triggering auto-preview generations");
+        triggerAutoPreview(
+          parsed.data.id,
+          updated.triggerWord,
+          updated.outputUrl,
+        ).catch(() => {});
+      }
+    }
   } catch (err) {
     req.log.error({ err }, "Failed to sync with Replicate");
     res.json(job);
